@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List
 import asyncio
 import logging
 
@@ -19,8 +19,9 @@ models.Base.metadata.create_all(bind=database.engine)
 app = FastAPI(
     title="NetMon Box",
     description="Network monitoring service for laboratory networks",
-    version="1.0.0"
+    version="1.0.0",
 )
+
 
 def get_db():
     """Dependency для получения сессии базы данных"""
@@ -30,6 +31,7 @@ def get_db():
     finally:
         db.close()
 
+
 @app.on_event("startup")
 async def startup_event():
     """Событие запуска приложения - запускаем мониторинг"""
@@ -37,11 +39,13 @@ async def startup_event():
     # Запускаем мониторинг в фоновом режиме каждые 60 секунд
     asyncio.create_task(monitor_service.start_monitoring(interval_seconds=60))
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Событие остановки приложения - останавливаем мониторинг"""
     logger.info("Shutting down NetMon Box application")
     await monitor_service.stop_monitoring()
+
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -123,28 +127,36 @@ def read_root():
     </html>
     """
 
+
 # ============================================================================
 # ENDPOINTS ДЛЯ УПРАВЛЕНИЯ УСТРОЙСТВАМИ
 # ============================================================================
 
+
 @app.post("/devices", response_model=dict)
-def register_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
+def register_device(
+    device: schemas.DeviceCreate, db: Session = Depends(get_db)
+):
     """Регистрация нового сетевого устройства для мониторинга"""
     # Проверяем, не существует ли уже устройство с таким IP
     existing_device = crud.get_device_by_ip(db, str(device.ip_address))
     if existing_device:
-        raise HTTPException(status_code=400, detail="Device with this IP address already exists")
-    
+        raise HTTPException(
+            status_code=400,
+            detail="Device with this IP address already exists",
+        )
+
     # Создаем устройство и возвращаем его данные
     created_device = crud.create_device(db, device)
     return crud._convert_device_to_dict(created_device)
 
+
 @app.get("/devices", response_model=List[dict])
 def list_devices(
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = 0,
+    limit: int = 100,
     active_only: bool = True,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Получение списка всех устройств с их текущим статусом"""
     if active_only:
@@ -152,8 +164,11 @@ def list_devices(
         return crud.get_devices_with_status(db, skip=skip, limit=limit)
     else:
         # Возвращаем все устройства (включая неактивные)
-        devices = crud.get_devices(db, skip=skip, limit=limit, active_only=False)
+        devices = crud.get_devices(
+            db, skip=skip, limit=limit, active_only=False
+        )
         return [crud._convert_device_to_dict(device) for device in devices]
+
 
 @app.get("/devices/{device_id}", response_model=dict)
 def get_device(device_id: int, db: Session = Depends(get_db)):
@@ -161,12 +176,12 @@ def get_device(device_id: int, db: Session = Depends(get_db)):
     device = crud.get_device(db, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    
+
     # Получаем историю ping, последний результат и процент доступности
     ping_results = crud.get_device_ping_results(db, device_id, limit=50)
     last_ping = crud.get_last_ping_result(db, device_id)
     availability = crud.get_device_availability(db, device_id)
-    
+
     return {
         "id": device.id,
         "ip_address": device.ip_address,
@@ -177,20 +192,24 @@ def get_device(device_id: int, db: Session = Depends(get_db)):
         "is_active": device.is_active,
         "last_ping": crud._convert_ping_result_to_dict(last_ping),
         "availability_percentage": availability,
-        "ping_history": [crud._convert_ping_result_to_dict(pr) for pr in ping_results]
+        "ping_history": [
+            crud._convert_ping_result_to_dict(pr) for pr in ping_results
+        ],
     }
+
 
 @app.put("/devices/{device_id}", response_model=dict)
 def update_device(
-    device_id: int, 
-    device_update: schemas.DeviceUpdate, 
-    db: Session = Depends(get_db)
+    device_id: int,
+    device_update: schemas.DeviceUpdate,
+    db: Session = Depends(get_db),
 ):
     """Обновление информации об устройстве"""
     updated_device = crud.update_device(db, device_id, device_update)
     if not updated_device:
         raise HTTPException(status_code=404, detail="Device not found")
     return crud._convert_device_to_dict(updated_device)
+
 
 @app.delete("/devices/{device_id}")
 def delete_device(device_id: int, db: Session = Depends(get_db)):
@@ -200,9 +219,11 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Device not found")
     return {"message": "Device deactivated successfully"}
 
+
 # ============================================================================
 # ENDPOINTS ДЛЯ МОНИТОРИНГА
 # ============================================================================
+
 
 @app.post("/devices/{device_id}/ping")
 async def ping_device(device_id: int):
@@ -212,28 +233,29 @@ async def ping_device(device_id: int):
         raise HTTPException(status_code=404, detail=result["error"])
     return result
 
+
 @app.get("/devices/{device_id}/ping-history")
 def get_device_ping_history(
-    device_id: int, 
-    limit: int = 100,
-    db: Session = Depends(get_db)
+    device_id: int, limit: int = 100, db: Session = Depends(get_db)
 ):
     """Получение истории ping для конкретного устройства"""
     device = crud.get_device(db, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    
+
     ping_results = crud.get_device_ping_results(db, device_id, limit=limit)
     return {
         "device_id": device_id,
         "device_ip": device.ip_address,
         "device_description": device.description,
-        "ping_history": ping_results
+        "ping_history": ping_results,
     }
+
 
 # ============================================================================
 # СИСТЕМНЫЕ ENDPOINTS
 # ============================================================================
+
 
 @app.get("/metrics")
 def get_metrics():
@@ -241,8 +263,9 @@ def get_metrics():
     return StreamingResponse(
         iter([metrics.metrics_exporter.get_metrics()]),
         media_type="text/plain",
-        headers=metrics.metrics_exporter.get_metrics_headers()
+        headers=metrics.metrics_exporter.get_metrics_headers(),
     )
+
 
 @app.get("/health")
 def health_check():
@@ -250,5 +273,5 @@ def health_check():
     return {
         "status": "healthy",
         "monitoring_active": monitor_service.is_running,
-        "service": "NetMon Box"
+        "service": "NetMon Box",
     }
