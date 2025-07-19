@@ -54,9 +54,7 @@ class TestPingService:
             assert result["is_alive"] is False
             assert result["response_time"] is None
             assert result["packet_loss"] == 100.0
-            assert "Network is unreachable" in result[
-                "error_message"
-            ]
+            assert "Network is unreachable" in result["error_message"]
 
     @pytest.mark.asyncio
     async def test_ping_device_timeout(self, ping_service):
@@ -102,9 +100,7 @@ rtt min/avg/max/mdev = 9.800/10.033/10.200/0.200 ms"""
         assert result["is_alive"] is False
         assert result["response_time"] is None
         assert result["packet_loss"] == 100.0
-        assert "No response received" in result[
-            "error_message"
-        ]
+        assert "No response received" in result["error_message"]
 
     def test_parse_windows_ping_output_success(self, ping_service):
         """Test parsing successful Windows ping output"""
@@ -140,6 +136,4 @@ Ping statistics for 192.168.1.999:
         assert result["is_alive"] is False
         assert result["response_time"] is None
         assert result["packet_loss"] == 100.0
-        assert "No response received" in result[
-            "error_message"
-        ]
+        assert "No response received" in result["error_message"]
